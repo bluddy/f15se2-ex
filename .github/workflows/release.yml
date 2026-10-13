@@ -128,9 +128,19 @@ jobs:
             --output appimage \
             --desktop-file AppDir/usr/share/applications/f15se2-ex.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png
-          # linuxdeploy names it from the .desktop Name; normalise the filename.
+          # linuxdeploy names the output from the .desktop Name= (e.g.
+          # F-15_Strike_Eagle_2-<ver>-x86_64.AppImage). A bare *.AppImage glob would
+          # also match the linuxdeploy-x86_64.AppImage tool sitting in this dir, so
+          # select the generated artifact explicitly by excluding the tool.
           mkdir -p dist
-          mv ./*.AppImage "dist/f15se2-ex-${VERSION}-linux-x86_64.AppImage"
+          generated="$(find . -maxdepth 1 -name '*.AppImage' ! -name 'linuxdeploy-*.AppImage' -printf '%f\n' | head -n1)"
+          if [ -z "$generated" ]; then
+            echo "ERROR: no generated .AppImage found" >&2
+            ls -la ./*.AppImage 2>/dev/null >&2 || true
+            exit 1
+          fi
+          echo "Generated AppImage: $generated"
+          mv "./$generated" "dist/f15se2-ex-${VERSION}-linux-x86_64.AppImage"
 
       - name: Build tarball
         env:
