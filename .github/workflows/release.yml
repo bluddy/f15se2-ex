@@ -96,8 +96,22 @@ jobs:
           # produces) extract-and-run instead of mounting.
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
+          # linuxdeploy resolves the binary's NEEDED libs (libSDL3.so.0) by searching
+          # the loader path. SDL3 is built from source via FetchContent and is not
+          # installed system-wide, so point the resolver at both the staged copy
+          # (AppDir/usr/lib) and the raw build tree, and hand linuxdeploy the real
+          # library explicitly with --library so it deploys it with correct symlinks.
+          sdl_lib="$(find build AppDir -name 'libSDL3.so*' -type f 2>/dev/null | head -n1)"
+          if [ -z "$sdl_lib" ]; then
+            echo "ERROR: could not locate a built libSDL3.so* to bundle" >&2
+            find build AppDir -name 'libSDL3*' 2>/dev/null >&2 || true
+            exit 1
+          fi
+          echo "Bundling SDL3 from: $sdl_lib"
+          export LD_LIBRARY_PATH="$(cd "$(dirname "$sdl_lib")" && pwd):${{ github.workspace }}/AppDir/usr/lib:${LD_LIBRARY_PATH:-}"
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
+            --library "$sdl_lib" \
             --output appimage \
             --desktop-file AppDir/usr/share/applications/f15se2-ex.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png
