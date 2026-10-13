@@ -579,9 +579,9 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"
 )
 
 # Bundle the SDL3 shared library we build/link against. On Windows this is the DLL;
-# on Linux/macOS the versioned .so/.dylib (plus the symlinks the loader follows).
-# Using the imported target's artifact keeps us correct whether SDL3 was built from
-# source (FetchContent) or found on the system.
+# on Linux/macOS the versioned .so/.dylib together with the SONAME symlink the loader
+# resolves (libSDL3.so.0). Using the imported target's artifact keeps us correct
+# whether SDL3 was built from source (FetchContent) or found on the system.
 if(TARGET SDL3::SDL3-shared)
     set(F15_SDL3_TARGET SDL3::SDL3-shared)
 else()
@@ -590,16 +590,39 @@ endif()
 
 get_target_property(F15_SDL3_TYPE ${F15_SDL3_TARGET} TYPE)
 if(F15_SDL3_TYPE STREQUAL "SHARED_LIBRARY")
-    install(FILES "$<TARGET_FILE:${F15_SDL3_TARGET}>"
-        DESTINATION "${F15_INSTALL_LIBDIR}"
-    )
-    # On ELF/Mach-O the SONAME is a symlink (libSDL3.so.0 -> libSDL3.so.0.x.y); install
-    # the SONAME file the binary actually dlopen's as well.
-    if(NOT WIN32)
-        install(FILES "$<TARGET_SONAME_FILE:${F15_SDL3_TARGET}>"
+    if(WIN32)
+        # Just the DLL next to the exe.
+        install(FILES "$<TARGET_FILE:${F15_SDL3_TARGET}>"
             DESTINATION "${F15_INSTALL_LIBDIR}"
-            OPTIONAL
         )
+    else()
+        # On ELF/Mach-O we need the real versioned library (libSDL3.so.0.x.y) *and*
+        # the SONAME symlink (libSDL3.so.0) the binary's NEEDED entry refers to.
+        # The right install signature depends on where SDL3 came from:
+        #   * built from source via FetchContent -> a normal target  -> install(TARGETS)
+        #   * found on the system via find_package -> an IMPORTED target
+        #     -> install(IMPORTED_RUNTIME_ARTIFACTS)
+        # Both reproduce the versioned file plus its symlinks.
+        get_target_property(F15_SDL3_IMPORTED ${F15_SDL3_TARGET} IMPORTED)
+        if(F15_SDL3_IMPORTED)
+            install(IMPORTED_RUNTIME_ARTIFACTS ${F15_SDL3_TARGET}
+                LIBRARY DESTINATION "${F15_INSTALL_LIBDIR}"
+                RUNTIME DESTINATION "${F15_INSTALL_LIBDIR}"
+            )
+        else()
+            # An ALIAS (SDL3::SDL3-shared) can't be passed to install(TARGETS); resolve
+            # it to the underlying target name first.
+            get_target_property(F15_SDL3_ALIASED ${F15_SDL3_TARGET} ALIASED_TARGET)
+            if(F15_SDL3_ALIASED)
+                set(F15_SDL3_INSTALL_TARGET ${F15_SDL3_ALIASED})
+            else()
+                set(F15_SDL3_INSTALL_TARGET ${F15_SDL3_TARGET})
+            endif()
+            install(TARGETS ${F15_SDL3_INSTALL_TARGET}
+                LIBRARY DESTINATION "${F15_INSTALL_LIBDIR}"
+                RUNTIME DESTINATION "${F15_INSTALL_LIBDIR}"
+            )
+        endif()
     endif()
 endif()
 
