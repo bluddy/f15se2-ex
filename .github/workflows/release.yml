@@ -81,12 +81,25 @@ jobs:
           Categories=Game;Simulation;
           Terminal=false
           EOF
-          # linuxdeploy requires an icon; derive a simple one from the title screenshot.
-          if command -v convert >/dev/null 2>&1; then
-            convert screenshots/title.png -resize 256x256 AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png || \
-              cp screenshots/title.png AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png
-          else
-            cp screenshots/title.png AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png
+          # linuxdeploy requires the icon to be exactly square (it validates the pixel
+          # resolution against the hicolor/256x256 dir name). The title screenshot is
+          # 16:9, so fit it into a 256x256 canvas and pad with transparency rather than
+          # stretching it. ImageMagick ships on the GitHub ubuntu runners; install it
+          # defensively in case that changes.
+          icon=AppDir/usr/share/icons/hicolor/256x256/apps/f15se2-ex.png
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends imagemagick
+          fi
+          convert screenshots/title.png \
+            -resize 256x256 \
+            -background none -gravity center -extent 256x256 \
+            "$icon"
+          # Fail early if the icon is not a perfect 256x256 square.
+          dims="$(identify -format '%wx%h' "$icon")"
+          echo "Generated icon: $dims"
+          if [ "$dims" != "256x256" ]; then
+            echo "ERROR: icon is $dims, expected 256x256" >&2
+            exit 1
           fi
 
       - name: Build AppImage
